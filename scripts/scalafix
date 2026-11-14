@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# scalafix 0.14.3 understands the Scala 3 syntax this project uses; nixpkgs
+# still ships 0.12, whose parser predates significant indentation.
+set -euo pipefail
+coursier_bin="${COURSIER:-}"
+if [ -z "$coursier_bin" ]; then
+  if command -v coursier >/dev/null 2>&1; then coursier_bin=coursier
+  else coursier_bin=cs
+  fi
+fi
+exec "$coursier_bin" launch --quiet ch.epfl.scala:scalafix-cli_2.13.16:0.14.3 --main-class scalafix.cli.Cli -- "$@"

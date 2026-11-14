@@ -1,0 +1,17 @@
+# Mill
+out/
+.bsp/
+.metals/
+.bloop/
+
+# Editors
+.idea/
+*.iml
+.vscode/
+
+# Nix
+result
+result-*
+
+# OS
+.DS_Store
