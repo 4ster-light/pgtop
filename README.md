@@ -1,10 +1,11 @@
 # pgtop
 
-[![Scala 3](https://img.shields.io/badge/Scala-3.7-DC322F?logo=scala&logoColor=white&style=flat-square)](https://www.scala-lang.org)
-[![Mill](https://img.shields.io/badge/build-Mill%201.3-FF5A5F?style=flat-square)](build.mill)
-[![Nix flake](https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white&style=flat-square)](flake.nix)
+[![Scala](https://img.shields.io/badge/Scala-%23DC322F.svg?logo=scala&logoColor=white&style=flat-square)](https://www.scala-lang.org)
+[![Mill](https://img.shields.io/badge/build-Mill-FF5A5F?style=flat-square)](build.mill)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12%2B-4169E1?logo=postgresql&logoColor=white&style=flat-square)](https://www.postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-munit%20%2B%20testcontainers-2EA043?style=flat-square)](#quality-gates)
+[![Nix flake](https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white&style=flat-square)](flake.nix)
+[![ci](https://img.shields.io/github/actions/workflow/status/4ster-light/pgtop/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/4ster-light/pgtop/actions/workflows/ci.yml)
+[![lint](https://img.shields.io/github/actions/workflow/status/4ster-light/pgtop/lint.yml?branch=main&style=flat-square&label=lint)](https://github.com/4ster-light/pgtop/actions/workflows/lint.yml)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue?style=flat-square)](LICENSE)
 
 `pgtop` connects to a PostgreSQL instance, reads the workload statistics the
@@ -49,13 +50,13 @@ index with zero scans costs write throughput, and that an idempotent
 
 ## What it reports
 
-| Rule | Looks at | Severity driven by | Fix |
-|---|---|---|---|
-| `missing-index` | tables read mostly by sequential scans | rows walked × table size | `CREATE INDEX CONCURRENTLY` on the inferred filter column |
-| `unused-index` | valid, non-constraint indexes with no scans | index size | `DROP INDEX CONCURRENTLY` |
-| `vacuum-debt` | dead tuples above a ratio and an absolute floor | estimated dead bytes | `VACUUM (ANALYZE)` + autovacuum thresholds |
-| `duplicate-index` | indexes with the same table, method, keys, predicate and uniqueness | reclaimable size | drop the redundant twin |
-| `expensive-statement` | statements with the largest cumulative time | total execution time | `EXPLAIN (ANALYZE, BUFFERS)` on the real statement |
+| Rule                  | Looks at                                                            | Severity driven by       | Fix                                                       |
+|-----------------------|---------------------------------------------------------------------|--------------------------|-----------------------------------------------------------|
+| `missing-index`       | tables read mostly by sequential scans                              | rows walked × table size | `CREATE INDEX CONCURRENTLY` on the inferred filter column |
+| `unused-index`        | valid, non-constraint indexes with no scans                         | index size               | `DROP INDEX CONCURRENTLY`                                 |
+| `vacuum-debt`         | dead tuples above a ratio and an absolute floor                     | estimated dead bytes     | `VACUUM (ANALYZE)` + autovacuum thresholds                |
+| `duplicate-index`     | indexes with the same table, method, keys, predicate and uniqueness | reclaimable size         | drop the redundant twin                                   |
+| `expensive-statement` | statements with the largest cumulative time                         | total execution time     | `EXPLAIN (ANALYZE, BUFFERS)` on the real statement        |
 
 A finding looks like this:
 
@@ -81,11 +82,11 @@ A finding looks like this:
 ## Quick start
 
 ```console
-$ nix develop                                  # JDK 21, Mill, scala-cli, scalafmt, scalafix, Postgres
-$ export DATABASE_URL=postgresql://postgres@localhost:5432/app
-$ mill cli.run                                 # terminal report
-$ mill cli.run -f markdown -o report.md        # Markdown export
-$ mill cli.run -m high --fail-on high          # exits 3 when something is that bad
+nix develop                                  # JDK 21, Mill, scala-cli, scalafmt, scalafix, Postgres
+export DATABASE_URL=postgresql://postgres@localhost:5432/app
+mill cli.run                                 # terminal report
+mill cli.run -f markdown -o report.md        # Markdown export
+mill cli.run -m high --fail-on high          # exits 3 when something is that bad
 ```
 
 Without Nix, use a Mill 1.3 installation and JDK 21.
@@ -94,15 +95,15 @@ Without Nix, use a Mill 1.3 installation and JDK 21.
 
 Settings come from flags or the usual libpq environment:
 
-| Flag | Environment | Meaning |
-|---|---|---|
-| `-u, --url` | `DATABASE_URL`, `PGURL` | `postgresql://user:pass@host:5432/db` |
-| `--host` | `PGHOST` | host, default `localhost` |
-| `--port` | `PGPORT` | port, default `5432` |
-| `-d, --dbname` | `PGDATABASE` | database, default the user name |
-| `--user` | `PGUSER` | user |
-| | `PGPASSWORD` | password, kept out of `ps` |
-| `--sslmode` | `PGSSLMODE` | e.g. `require`, `verify-full` |
+| Flag           | Environment             | Meaning                               |
+|----------------|-------------------------|---------------------------------------|
+| `-u, --url`    | `DATABASE_URL`, `PGURL` | `postgresql://user:pass@host:5432/db` |
+| `--host`       | `PGHOST`                | host, default `localhost`             |
+| `--port`       | `PGPORT`                | port, default `5432`                  |
+| `-d, --dbname` | `PGDATABASE`            | database, default the user name       |
+| `--user`       | `PGUSER`                | user                                  |
+|                | `PGPASSWORD`            | password, kept out of `ps`            |
+| `--sslmode`    | `PGSSLMODE`             | e.g. `require`, `verify-full`         |
 
 Credentials inside the URL are accepted and moved into driver properties.
 `PGPASSWORD` is the supported way to pass a password: a flag would be visible in
@@ -110,19 +111,19 @@ Credentials inside the URL are accepted and moved into driver properties.
 
 ### Exit codes
 
-| Code | Meaning |
-|---|---|
-| `0` | report produced, nothing at or above `--fail-on` |
-| `1` | could not connect or read the statistics |
-| `2` | bad usage |
-| `3` | `--fail-on` was triggered |
+| Code | Meaning                                          |
+|------|--------------------------------------------------|
+| `0`  | report produced, nothing at or above `--fail-on` |
+| `1`  | could not connect or read the statistics         |
+| `2`  | bad usage                                        |
+| `3`  | `--fail-on` was triggered                        |
 
 ## Output formats
 
-| Format | Flag | Use |
-|---|---|---|
-| Terminal | `-f terminal` (default) | ranked, coloured, one finding at a time |
-| Markdown | `-f markdown` | evidence tables and fenced SQL for a ticket or PR |
+| Format   | Flag                    | Use                                               |
+|----------|-------------------------|---------------------------------------------------|
+| Terminal | `-f terminal` (default) | ranked, coloured, one finding at a time           |
+| Markdown | `-f markdown`           | evidence tables and fenced SQL for a ticket or PR |
 
 Colour follows the usual convention: `--color` forces it, `--no-color` disables
 it, and `NO_COLOR` is honoured. Piped output is plain by default.
@@ -137,13 +138,13 @@ ANALYZE` executes the statement.
 Thresholds live in `pgtop.heuristics.Thresholds` and default to conservative
 values: a finding that cannot be justified from the snapshot is not printed.
 
-| Rule | Fires when | Default |
-|---|---|---|
-| `missing-index` | `seq_scan ≥ N`, `n_live_tup ≥ M`, `seq_scan ≥ R × idx_scan` | 1000 scans, 10K rows, 10× |
-| `unused-index` | `idx_scan ≤ N`, size ≥ B, not constraint-backed, valid | 50 scans, 4 MiB |
-| `vacuum-debt` | `n_dead_tup ≥ N` and dead ratio ≥ R | 1000 tuples, 10% |
-| `duplicate-index` | two valid indexes share table, method, keys, predicate, uniqueness | exact match |
-| `expensive-statement` | cumulative time ≥ T, top K | 60 s, top 5 |
+| Rule                  | Fires when                                                         | Default                   |
+|-----------------------|--------------------------------------------------------------------|---------------------------|
+| `missing-index`       | `seq_scan ≥ N`, `n_live_tup ≥ M`, `seq_scan ≥ R × idx_scan`        | 1000 scans, 10K rows, 10× |
+| `unused-index`        | `idx_scan ≤ N`, size ≥ B, not constraint-backed, valid             | 50 scans, 4 MiB           |
+| `vacuum-debt`         | `n_dead_tup ≥ N` and dead ratio ≥ R                                | 1000 tuples, 10%          |
+| `duplicate-index`     | two valid indexes share table, method, keys, predicate, uniqueness | exact match               |
+| `expensive-statement` | cumulative time ≥ T, top K                                         | 60 s, top 5               |
 
 The missing-index rule infers a candidate column by scanning `pg_stat_statements`
 for statements touching the table and reading the shape
@@ -154,7 +155,7 @@ lists the offending statements.
 
 ## Architecture
 
-```
+```txt
 core/        snapshot, tables, indexes, statements, findings, severity, suggested fixes
 collector/   JDBC reads of pg_stat_statements, pg_stat_user_tables, pg_stat_user_indexes, pg_stat_activity
 heuristics/  pure rules, a registry, query-shape inference
@@ -166,7 +167,7 @@ itest/       integration test against a throwaway PostgreSQL
 
 `moduleDeps` makes the layering a compile-time fact:
 
-```
+```txt
 core  ←  collector        collector never mentions findings
 core  ←  heuristics       pure, no IO, no JDBC
 core  ←  report           pure, no terminal state, no JDBC
@@ -192,13 +193,13 @@ the database, and the renderers cannot accidentally decide what matters.
 
 ## Flake outputs
 
-| Output | What it is |
-|---|---|
+| Output              | What it is                                                                |
+|---------------------|---------------------------------------------------------------------------|
 | `devShells.default` | JDK 21, Mill, scala-cli, scalafmt, scalafix 0.14, coursier, PostgreSQL 17 |
-| `packages.default` | `pgtop` launcher, builds into `~/.cache/pgtop` on first use |
-| `apps.default` | same as `nix run . -- …` |
-| `apps.check` | `lint.check` + unit tests with the dev shell toolchain |
-| `apps.integration` | the testcontainers suite, needs Docker |
+| `packages.default`  | `pgtop` launcher, builds into `~/.cache/pgtop` on first use               |
+| `apps.default`      | same as `nix run . -- …`                                                  |
+| `apps.check`        | `lint.check` + unit tests with the dev shell toolchain                    |
+| `apps.integration`  | the testcontainers suite, needs Docker                                    |
 
 The gate runs as an app rather than a `checks` derivation: Mill resolves Maven
 dependencies and fetches its own JDK at build time, and a sandboxed Nix build has
@@ -208,19 +209,23 @@ outputs; `nix run .#check` runs the gate.
 ## Quality gates
 
 ```console
-$ mill lint.check          # scalafmt --test + scalafix --check
-$ mill __.test             # 57 unit tests: core, collector, heuristics, report
-$ mill itest.test          # 4 integration tests against postgres:17-alpine
-$ nix run .#check          # the same gate through the flake
+mill lint.check          # scalafmt --test + scalafix --check
+mill __.test             # 57 unit tests: core, collector, heuristics, report
+mill itest.test          # 4 integration tests against postgres:17-alpine
+nix run .#check          # the same gate through the flake
 ```
 
-| Suite | Tests | Covers |
-|---|---|---|
-| `core.test` | 8 | severity ordering, ranking, formatting, signature normalisation |
-| `collector.test` | 8 | connection URLs, credentials, libpq environment |
-| `heuristics.test` | 33 | every rule against fixture snapshots, registry, query shapes |
-| `report.test` | 8 | terminal and Markdown rendering, limits, severity filtering |
-| `itest.test` | 4 | real collection, findings, rendering and EXPLAIN on a live cluster |
+| Suite             | Tests | Covers                                                             |
+|-------------------|-------|--------------------------------------------------------------------|
+| `core.test`       | 8     | severity ordering, ranking, formatting, signature normalisation    |
+| `collector.test`  | 8     | connection URLs, credentials, libpq environment                    |
+| `heuristics.test` | 33    | every rule against fixture snapshots, registry, query shapes       |
+| `report.test`     | 8     | terminal and Markdown rendering, limits, severity filtering        |
+| `itest.test`      | 4     | real collection, findings, rendering and EXPLAIN on a live cluster |
+
+GitHub Actions runs both gates on every push and pull request: `ci.yml` runs the
+four unit suites and the testcontainers integration test, `lint.yml` runs
+`mill lint.check`. The badges at the top of this file report their status.
 
 ## Requirements
 
@@ -256,4 +261,4 @@ $ nix run .#check          # the same gate through the flake
 
 ## License
 
-GPL-3.0 — see [LICENSE](LICENSE).
+GPL-3.0. See [LICENSE](LICENSE).

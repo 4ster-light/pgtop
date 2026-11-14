@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: unit and integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Cache Mill and coursier downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/mill
+            ~/.cache/coursier
+          key: mill-${{ runner.os }}-${{ hashFiles('build.mill', 'flake.lock') }}
+          restore-keys: |
+            mill-${{ runner.os }}-
+
+      - name: Unit tests
+        run: |
+          set -euo pipefail
+          for module in core.test collector.test heuristics.test report.test; do
+            echo "::group::$module"
+            nix develop -c mill --no-server "$module"
+            echo "::endgroup::"
+          done
+
+      - name: Integration test
+        run: nix develop -c mill --no-server itest.test
