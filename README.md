@@ -5,7 +5,7 @@
 [![Nix flake](https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white&style=flat-square)](flake.nix)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12%2B-4169E1?logo=postgresql&logoColor=white&style=flat-square)](https://www.postgresql.org)
 [![Tests](https://img.shields.io/badge/tests-munit%20%2B%20testcontainers-2EA043?style=flat-square)](#quality-gates)
-[![License: MIT](https://img.shields.io/badge/license-MIT-red?style=flat-square)](LICENSE)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue?style=flat-square)](LICENSE)
 
 `pgtop` connects to a PostgreSQL instance, reads the workload statistics the
 server already keeps, and prints **ranked findings with a ready-to-run fix**.
@@ -256,4 +256,4 @@ $ nix run .#check          # the same gate through the flake
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GPL-3.0 — see [LICENSE](LICENSE).
