@@ -31,7 +31,7 @@ object TerminalReport:
     val parts = Vector(
       Ansi.bold(s"pgtop ${input.toolVersion}", options.color),
       s"database ${cluster.database}",
-      cluster.serverVersion.takeWhile(_ != ' '),
+      cluster.serverVersion.split(" ").take(2).mkString(" "),
       s"snapshot ${Format.instant(input.analysis.capturedAt)}"
     )
     "  " + parts.mkString("  ·  ")

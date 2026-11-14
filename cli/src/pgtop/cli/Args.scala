@@ -4,6 +4,10 @@ import pgtop.collector.ConnectionConfig
 import pgtop.domain.Severity
 import pgtop.report.Format
 
+/** When to emit ANSI colours. `Auto` means "only on a terminal, honouring NO_COLOR". */
+enum ColorMode:
+  case Auto, Always, Never
+
 /** What the user asked for on the command line. */
 final case class Args(
   connection: ConnectionConfig,
@@ -11,7 +15,7 @@ final case class Args(
   output: Option[String] = None,
   minSeverity: Severity = Severity.Info,
   limit: Int = 25,
-  color: Boolean = true,
+  colorMode: ColorMode = ColorMode.Auto,
   explain: Boolean = false,
   explainLimit: Int = 3,
   failOn: Option[Severity] = None
@@ -42,7 +46,8 @@ object Args:
       |  -o, --output PATH      write the report to a file
       |  -n, --limit N          maximum number of findings to print (default 25)
       |  -m, --min-severity S   critical, high, medium, low or info (default info)
-      |      --no-color         disable ANSI colors
+      |      --color            always emit ANSI colours
+      |      --no-color         never emit ANSI colours (also honoured: NO_COLOR)
       |
       |Analysis:
       |      --explain          run EXPLAIN (ANALYZE) on the most expensive statements
@@ -63,7 +68,8 @@ object Args:
       case Nil => Right(Invocation.Run(args))
       case ("-h" | "--help") :: _ => Right(Invocation.Help)
       case ("-V" | "--version") :: _ => Right(Invocation.Version)
-      case "--no-color" :: rest => loop(rest, args.copy(color = false))
+      case "--color" :: rest => loop(rest, args.copy(colorMode = ColorMode.Always))
+      case "--no-color" :: rest => loop(rest, args.copy(colorMode = ColorMode.Never))
       case "--explain" :: rest => loop(rest, args.copy(explain = true))
       case flag :: rest =>
         val (name, inlineValue) = flag.indexOf('=') match

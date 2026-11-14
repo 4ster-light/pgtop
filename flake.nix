@@ -44,7 +44,7 @@
           text = ''
             export JAVA_HOME=${jdk}
             cache="''${XDG_CACHE_HOME:-$HOME/.cache}/pgtop"
-            marker="$cache/${builtins.baseNameOf (toString projectSource)}"
+            marker="$cache/${baseNameOf (toString projectSource)}"
             mkdir -p "$cache"
             if [ ! -e "$marker" ]; then
               rm -rf "$cache/src"

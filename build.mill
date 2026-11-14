@@ -57,6 +57,9 @@ object collector extends PgtopModule:
   def moduleDeps = Seq(core)
   def mvnDeps = Seq(mvn"org.postgresql:postgresql:${Versions.postgresql}")
 
+  object test extends PgtopTests:
+    def moduleDeps = Seq(collector)
+
 /** Pure rules: snapshot -> findings. */
 object heuristics extends PgtopModule:
   def moduleDeps = Seq(core)

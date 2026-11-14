@@ -84,7 +84,10 @@ object Main:
       case _ => 0
 
   private def colorsEnabled(args: Args, env: Map[String, String], out: PrintStream): Boolean =
-    args.color && args.output.isEmpty && env.get("NO_COLOR").isEmpty && (out eq System.out)
+    args.colorMode match
+      case ColorMode.Always => true
+      case ColorMode.Never => false
+      case ColorMode.Auto => args.output.isEmpty && env.get("NO_COLOR").isEmpty && (out eq System.out)
 
   private def terminalWidth(env: Map[String, String]): Int =
     env.get("COLUMNS").flatMap(_.toIntOption).filter(width => width >= 60).map(_ - 2).getOrElse(100)

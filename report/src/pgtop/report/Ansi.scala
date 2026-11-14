@@ -7,7 +7,7 @@ object Ansi:
   private val Reset = "\u001b[0m"
 
   def paint(code: String, text: String, enabled: Boolean): String =
-    if enabled then s"\u001b[$code${text}$Reset" else text
+    if enabled then s"\u001b[${code}m$text$Reset" else text
 
   def bold(text: String, enabled: Boolean): String = paint("1", text, enabled)
 
