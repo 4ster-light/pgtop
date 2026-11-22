@@ -21,19 +21,37 @@ final case class Args(
   failOn: Option[Severity] = None
 )
 
+/** The diff view needs no connection, only presentation flags. */
+final case class DiffArgs(
+  format: Format = Format.Terminal,
+  output: Option[String] = None,
+  limit: Int = 25,
+  colorMode: ColorMode = ColorMode.Auto
+)
+
 /** Parsing the command line, including the built-in help and version entries. */
 enum Invocation:
   case Help
   case Version
   case Run(args: Args)
+  case Save(args: Args, path: String)
+  case Diff(before: String, after: String, args: DiffArgs)
 
 object Args:
   val usage: String =
     """pgtop — PostgreSQL workload advisor
       |
-      |Usage: pgtop [options]
+      |Usage: pgtop [options]                   analyse a live database
+      |       pgtop save PATH [connection]      capture a snapshot to a JSON file
+      |       pgtop diff BEFORE AFTER [output]  compare two saved snapshots
       |
-      |Connection (flags win over the environment):
+      |Commands:
+      |  save PATH      collect now and write the snapshot as JSON; the file carries a
+      |                 format and version envelope, ready for a later diff
+      |  diff A B       pair two snapshot files by capture time and turn their counters
+      |                 into deltas and per-hour rates over the window
+      |
+      |Connection (flags win over the environment; `save` takes these too):
       |  -u, --url URL          PostgreSQL URL, e.g. postgresql://user@host:5432/db
       |      --host HOST        database host (PGHOST)
       |      --port PORT        database port (PGPORT)
@@ -44,7 +62,7 @@ object Args:
       |Output:
       |  -f, --format FORMAT    terminal (default) or markdown
       |  -o, --output PATH      write the report to a file
-      |  -n, --limit N          maximum number of findings to print (default 25)
+      |  -n, --limit N          maximum number of findings or rows to print (default 25)
       |  -m, --min-severity S   critical, high, medium, low or info (default info)
       |      --color            always emit ANSI colours
       |      --no-color         never emit ANSI colours (also honoured: NO_COLOR)
@@ -60,8 +78,33 @@ object Args:
       |""".stripMargin
 
   def parse(argv: Vector[String], env: Map[String, String]): Either[String, Invocation] =
-    val fromEnv = ConnectionConfig.fromEnvironment(env.get)
-    loop(argv.toList, Args(connection = fromEnv))
+    argv match
+      case "save" +: rest => parseSave(rest, env)
+      case "diff" +: rest => parseDiff(rest)
+      case _ => loop(argv.toList, Args(connection = ConnectionConfig.fromEnvironment(env.get)))
+
+  /** `pgtop save PATH`: the path is the first token, the rest is connection flags. */
+  private def parseSave(rest: Vector[String], env: Map[String, String]): Either[String, Invocation] =
+    rest.headOption match
+      case Some("-h" | "--help") => Right(Invocation.Help)
+      case Some("-V" | "--version") => Right(Invocation.Version)
+      case Some(path) if !path.startsWith("-") =>
+        loop(rest.tail.toList, Args(connection = ConnectionConfig.fromEnvironment(env.get))).map {
+          case Invocation.Run(args) => Invocation.Save(args, path)
+          case other => other
+        }
+      case _ => Left("save needs a file path: pgtop save PATH [connection options]")
+
+  /** `pgtop diff BEFORE AFTER`: two paths first, then presentation flags. */
+  private def parseDiff(rest: Vector[String]): Either[String, Invocation] =
+    rest.headOption match
+      case Some("-h" | "--help") => Right(Invocation.Help)
+      case Some("-V" | "--version") => Right(Invocation.Version)
+      case _ =>
+        rest match
+          case before +: after +: flags =>
+            diffFlags(flags.toList, DiffArgs()).map(Invocation.Diff(before, after, _))
+          case _ => Left("diff needs two snapshot files: pgtop diff BEFORE AFTER [output options]")
 
   private def loop(remaining: List[String], args: Args): Either[String, Invocation] =
     remaining match
@@ -72,20 +115,59 @@ object Args:
       case "--no-color" :: rest => loop(rest, args.copy(colorMode = ColorMode.Never))
       case "--explain" :: rest => loop(rest, args.copy(explain = true))
       case flag :: rest =>
-        val (name, inlineValue) = flag.indexOf('=') match
-          case -1 => (flag, None)
-          case at => (flag.take(at), Some(flag.drop(at + 1)))
-        withValue(name, inlineValue, rest) match
+        val (name, inlineValue) = splitFlag(flag)
+        withValue(name, inlineValue, rest, knownValueOption) match
           case None => Left(s"unknown option: $flag")
           case Some(Left(error)) => Left(error)
           case Some(Right((value, tail))) => applyOption(name, value, tail, args)
 
+  private def diffFlags(remaining: List[String], args: DiffArgs): Either[String, DiffArgs] =
+    remaining match
+      case Nil => Right(args)
+      case "--color" :: rest => diffFlags(rest, args.copy(colorMode = ColorMode.Always))
+      case "--no-color" :: rest => diffFlags(rest, args.copy(colorMode = ColorMode.Never))
+      case flag :: rest =>
+        val (name, inlineValue) = splitFlag(flag)
+        withValue(name, inlineValue, rest, knownDiffOption) match
+          case None => Left(s"unknown option for diff: $flag")
+          case Some(Left(error)) => Left(error)
+          case Some(Right((value, tail))) => applyDiffOption(name, value, tail, args)
+
+  private def splitFlag(flag: String): (String, Option[String]) =
+    flag.indexOf('=') match
+      case -1 => (flag, None)
+      case at => (flag.take(at), Some(flag.drop(at + 1)))
+
+  private val knownValueOption: Set[String] = Set(
+    "-u",
+    "--url",
+    "--host",
+    "--port",
+    "-d",
+    "--dbname",
+    "--user",
+    "--sslmode",
+    "-f",
+    "--format",
+    "-o",
+    "--output",
+    "-n",
+    "--limit",
+    "-m",
+    "--min-severity",
+    "--explain-limit",
+    "--fail-on"
+  )
+
+  private val knownDiffOption: Set[String] = Set("-f", "--format", "-o", "--output", "-n", "--limit")
+
   private def withValue(
     name: String,
     inlineValue: Option[String],
-    rest: List[String]
+    rest: List[String],
+    known: Set[String]
   ): Option[Either[String, (String, List[String])]] =
-    if !knownValueOption(name) then None
+    if !known.contains(name) then None
     else
       Some(
         (inlineValue, rest) match
@@ -93,28 +175,6 @@ object Args:
           case (None, value :: tail) => Right((value, tail))
           case (None, Nil) => Left(s"$name needs a value")
       )
-
-  private def knownValueOption(name: String): Boolean =
-    Set(
-      "-u",
-      "--url",
-      "--host",
-      "--port",
-      "-d",
-      "--dbname",
-      "--user",
-      "--sslmode",
-      "-f",
-      "--format",
-      "-o",
-      "--output",
-      "-n",
-      "--limit",
-      "-m",
-      "--min-severity",
-      "--explain-limit",
-      "--fail-on"
-    ).contains(name)
 
   private def applyOption(
     name: String,
@@ -155,3 +215,21 @@ object Args:
           case Some(severity) => loop(rest, args.copy(failOn = Some(severity)))
           case None => Left(s"unknown severity: $value")
       case other => Left(s"unknown option: $other")
+
+  private def applyDiffOption(
+    name: String,
+    value: String,
+    rest: List[String],
+    args: DiffArgs
+  ): Either[String, DiffArgs] =
+    name match
+      case "-f" | "--format" =>
+        Format.parse(value) match
+          case Some(format) => diffFlags(rest, args.copy(format = format))
+          case None => Left(s"unknown format: $value (expected terminal or markdown)")
+      case "-o" | "--output" => diffFlags(rest, args.copy(output = Some(value)))
+      case "-n" | "--limit" =>
+        value.toIntOption.filter(_ >= 0) match
+          case Some(limit) => diffFlags(rest, args.copy(limit = limit))
+          case None => Left(s"invalid limit: $value")
+      case other => Left(s"unknown option for diff: $other")

@@ -1,6 +1,6 @@
 package pgtop.domain
 
-import java.time.Instant
+import java.time.{Duration, Instant}
 import java.util.Locale
 
 /** Number formatting shared by heuristics (explanations) and report rendering. */
@@ -32,10 +32,25 @@ object Format:
     else value.toString
 
   def milliseconds(value: Double): String =
-    if value >= 60_000 then s"${fixed(value / 60_000, 1)} min"
-    else if value >= 1_000 then s"${fixed(value / 1_000, 2)} s"
+    val magnitude = value.abs
+    if magnitude >= 60_000 then s"${fixed(value / 60_000, 1)} min"
+    else if magnitude >= 1_000 then s"${fixed(value / 1_000, 2)} s"
     else s"${fixed(value, 1)} ms"
 
   def percent(ratio: Double): String = s"${fixed(ratio * 100, 1)}%"
 
   def instant(value: Instant): String = value.toString
+
+  /** A per-hour rate: compact above a hundred, one decimal under it. */
+  def rate(value: Double): String =
+    val magnitude = value.abs
+    if magnitude >= 100.0 then count(value.toLong) + "/h"
+    else String.format(Locale.ROOT, "%.1f/h", Double.box(value))
+
+  /** The span between two captures, in its two largest units: `1d 6h`, `45m 30s`. */
+  def window(value: Duration): String =
+    val seconds = value.toSeconds
+    if seconds >= 86_400 then s"${seconds / 86_400}d ${(seconds % 86_400) / 3_600}h"
+    else if seconds >= 3_600 then s"${seconds / 3_600}h ${(seconds % 3_600) / 60}m"
+    else if seconds >= 60 then s"${seconds / 60}m ${seconds % 60}s"
+    else s"${seconds}s"

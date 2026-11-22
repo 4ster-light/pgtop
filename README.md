@@ -21,6 +21,7 @@ suggested SQL can be pasted into `psql`.
 - [What it reports](#what-it-reports)
 - [Quick start](#quick-start)
 - [Output formats](#output-formats)
+- [Snapshots and diffing](#snapshots-and-diffing)
 - [How the rules decide](#how-the-rules-decide)
 - [Architecture](#architecture)
 - [Build and tooling](#build-and-tooling)
@@ -131,7 +132,47 @@ it, and `NO_COLOR` is honoured. Piped output is plain by default.
 `--explain` additionally runs `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on the
 most expensive statements and renders a plan summary. Only read-only statements
 are explained, inside a transaction that is rolled back, because `EXPLAIN
-ANALYZE` executes the statement.
+ANALYZE executes the statement.
+
+## Snapshots and diffing
+
+The single-shot report answers "what is wrong now". To answer "is this
+regressing", save snapshots and diff them:
+
+```console
+pgtop save prod.json -u postgresql://app@db.example.com:5432/app
+# ... a day, a deploy, a traffic spike ...
+pgtop save prod2.json -u postgresql://app@db.example.com:5432/app
+pgtop diff prod.json prod2.json
+pgtop diff prod.json prod2.json -f markdown -o regression.md
+```
+
+`diff` pairs the two files by capture time, whichever order they come in,
+turns cumulative counters into deltas and per-hour rates over the window, and
+reports:
+
+- **Scan traffic**: tables ranked by scan growth per hour, with dead-tuple and
+  write movement alongside.
+- **Indexes untouched in the window**: existed before, still valid, and not one
+  scan or tuple read since. That is the honest `unused-index`: unused *since
+  this snapshot*, not since an unknown reset.
+- **Objects created or dropped** during the window.
+- **Statements**, ranked by added execution time, with calls, rows and temp
+  spill.
+
+A `pg_stat_reset()` between the two captures is detected and flagged, because
+the deltas then undercount; so are mismatched databases. The files are JSON with
+a `format` and `version` envelope, readable with `jq`, and carry the counters
+exactly as collected, so a later pgtop can re-run rules over an old snapshot:
+
+```console
+$ jq -r '.capturedAt, (.tables | length)' prod.json
+2026-11-22T09:41:02.117Z
+14
+```
+
+Through Mill, the commands are `mill cli.run -- save prod.json …` and
+`mill cli.run -- diff prod.json prod2.json`.
 
 ## How the rules decide
 
@@ -160,6 +201,7 @@ core/        snapshot, tables, indexes, statements, findings, severity, suggeste
 collector/   JDBC reads of pg_stat_statements, pg_stat_user_tables, pg_stat_user_indexes, pg_stat_activity
 heuristics/  pure rules, a registry, query-shape inference
 explain/     optional EXPLAIN (ANALYZE, FORMAT JSON) runner, parsed with circe
+store/       snapshot files: versioned JSON, circe codecs
 report/      terminal and Markdown rendering
 cli/         argument parsing, wiring, exit codes
 itest/       integration test against a throwaway PostgreSQL
@@ -171,6 +213,7 @@ itest/       integration test against a throwaway PostgreSQL
 core  ←  collector        collector never mentions findings
 core  ←  heuristics       pure, no IO, no JDBC
 core  ←  report           pure, no terminal state, no JDBC
+core  ←  store            snapshot files: JSON codecs, no JDBC
 core  ←  collector ← explain
 all of the above ← cli
 ```
@@ -182,7 +225,7 @@ the database, and the renderers cannot accidentally decide what matters.
 
 - **Mill 1.3, not sbt.** One `build.mill` in plain Scala, no plugin resolution and
   no `project/` directory. `moduleDeps` states the layering in one place, and the
-  lint tasks are ordinary methods. For a single CLI with six internal layers,
+    lint tasks are ordinary methods. For a single CLI with seven internal layers,
   sbt's plugin ecosystem and publishing conventions buy nothing.
 - **Scala 3.7** with `-Werror`, `-Wunused:all` and `-Xsemanticdb`: a warning fails
   the build.
@@ -210,21 +253,23 @@ outputs; `nix run .#check` runs the gate.
 
 ```console
 mill lint.check          # scalafmt --test + scalafix --check
-mill __.test             # 57 unit tests: core, collector, heuristics, report
-mill itest.test          # 4 integration tests against postgres:17-alpine
+mill __.test             # 88 unit tests: core, collector, heuristics, report, store, cli
+mill itest.test          # 6 integration tests against postgres:17-alpine
 nix run .#check          # the same gate through the flake
 ```
 
 | Suite             | Tests | Covers                                                             |
 |-------------------|-------|--------------------------------------------------------------------|
-| `core.test`       | 8     | severity ordering, ranking, formatting, signature normalisation    |
+| `core.test`       | 18    | severity ordering, ranking, formatting, signatures, snapshot diffing |
 | `collector.test`  | 8     | connection URLs, credentials, libpq environment                    |
 | `heuristics.test` | 33    | every rule against fixture snapshots, registry, query shapes       |
-| `report.test`     | 8     | terminal and Markdown rendering, limits, severity filtering        |
-| `itest.test`      | 4     | real collection, findings, rendering and EXPLAIN on a live cluster |
+| `report.test`     | 15    | terminal and Markdown rendering, limits, severity, diff view        |
+| `store.test`      | 8     | JSON round-trip, envelope checks, refusal paths, file IO            |
+| `cli.test`        | 6     | argument parsing for run, save and diff                             |
+| `itest.test`      | 6     | collection, findings, rendering, EXPLAIN, snapshot files, diff CLI  |
 
 GitHub Actions runs both gates on every push and pull request: `ci.yml` runs the
-four unit suites and the testcontainers integration test, `lint.yml` runs
+six unit suites and the testcontainers integration test, `lint.yml` runs
 `mill lint.check`. The badges at the top of this file report their status.
 
 ## Requirements
@@ -244,20 +289,19 @@ four unit suites and the testcontainers integration test, `lint.yml` runs
 - Duplicate detection uses exact signature equality, not prefix coverage: `(a)`
   and `(a, b)` are not reported as duplicates yet.
 - `EXPLAIN` needs literal statements; parameterised queries are skipped and noted.
+- `pgtop diff` pairs statements by `queryid`: the same statement text run by
+  different users merges into one entry, and a table dropped and recreated
+  under its old name restarts its counters.
 
 ## Roadmap
 
-1. **Snapshot diffing over time.** Persist snapshots, diff two of them, and turn
-   counters into rates: scans per hour, dead-tuple growth, index usage since a
-   deploy. The untested-but-important question is "is this regressing?", and it
-   needs history.
-2. Rule inputs switch from a snapshot to a diff, so `unused-index` becomes
+1. Rule inputs switch from a snapshot to a diff, so `unused-index` becomes
    "unused for 14 days" and `missing-index` becomes "seq scans growing since the
    last release".
-3. Prefix-covered duplicate detection.
-4. Fold `--explain` output into the statement findings instead of a separate
+2. Prefix-covered duplicate detection.
+3. Fold `--explain` output into the statement findings instead of a separate
    section.
-5. SARIF export so findings annotate a pull request.
+4. SARIF export so findings annotate a pull request.
 
 ## License
 

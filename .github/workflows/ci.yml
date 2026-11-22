@@ -40,7 +40,7 @@ jobs:
       - name: Unit tests
         run: |
           set -euo pipefail
-          for module in core.test collector.test heuristics.test report.test; do
+            for module in core.test collector.test heuristics.test report.test store.test cli.test; do
             echo "::group::$module"
             nix develop -c mill --no-server "$module"
             echo "::endgroup::"

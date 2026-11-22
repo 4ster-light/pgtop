@@ -60,7 +60,7 @@ object MarkdownReport:
       lines += ""
       lines += "| Metric | Value |"
       lines += "|---|---|"
-      finding.evidence.foreach(e => lines += s"| ${e.label} | ${escape(e.value)} |")
+      finding.evidence.foreach(e => lines += s"| ${e.label} | ${Text.escapeCell(e.value)} |")
     lines += ""
     lines += "### Fix"
     lines += ""
@@ -82,10 +82,7 @@ object MarkdownReport:
     lines += "|---|---|---|---|"
     plans.foreach { plan =>
       val node = plan.slowestNodeRelation.fold(plan.slowestNodeType)(name => s"${plan.slowestNodeType} on $name")
-      lines += s"| `${escape(plan.queryLabel)}` | ${Format.milliseconds(plan.executionMs)} | " +
+      lines += s"| `${Text.escapeCell(plan.queryLabel)}` | ${Format.milliseconds(plan.executionMs)} | " +
         s"${Format.milliseconds(plan.planningMs)} | $node (${Format.milliseconds(plan.slowestNodeMs)}) |"
     }
     lines.result()
-
-  /** Table cells cannot contain raw pipes or newlines. */
-  private def escape(value: String): String = value.replace("|", "\\|").replace("\n", " ")

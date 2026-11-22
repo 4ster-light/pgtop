@@ -16,3 +16,6 @@ object Text:
 
   def rule(width: Int, character: String = "─"): String =
     character * math.max(width, 1)
+
+  /** Table cells cannot contain raw pipes or newlines. */
+  def escapeCell(value: String): String = value.replace("|", "\\|").replace("\n", " ")

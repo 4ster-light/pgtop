@@ -78,7 +78,7 @@
             echo "pgtop dev shell (JDK 21, Mill $(mill --version 2>/dev/null | tail -1))"
             echo "  mill __.compile        compile everything"
             echo "  mill lint.check        scalafmt --test + scalafix --check"
-            echo "  mill __.test           core, heuristics and report unit tests"
+              echo "  mill __.test           all unit tests (itest needs Docker)"
             echo "  mill itest.test        integration test against a throwaway Postgres (needs Docker)"
             echo "  mill cli.run -- --help run the CLI"
           '';
@@ -96,12 +96,15 @@
           };
           check = {
             type = "app";
-            program = "${gate "pgtop-check" ''
-              mill --no-server lint.check
-              mill --no-server core.test
-              mill --no-server heuristics.test
-              mill --no-server report.test
-            ''}/bin/pgtop-check";
+              program = "${gate "pgtop-check" ''
+                mill --no-server lint.check
+                mill --no-server core.test
+                mill --no-server collector.test
+                mill --no-server heuristics.test
+                mill --no-server report.test
+                mill --no-server store.test
+                mill --no-server cli.test
+              ''}/bin/pgtop-check";
           };
           integration = {
             type = "app";

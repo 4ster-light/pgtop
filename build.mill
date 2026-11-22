@@ -76,6 +76,17 @@ object explain extends PgtopModule:
     mvn"io.circe::circe-core:${Versions.circe}"
   )
 
+/** Snapshot files: JSON round-trip of a captured snapshot. Knows no JDBC. */
+object store extends PgtopModule:
+  def moduleDeps = Seq(core)
+  def mvnDeps = Seq(
+    mvn"io.circe::circe-core:${Versions.circe}",
+    mvn"io.circe::circe-parser:${Versions.circe}"
+  )
+
+  object test extends PgtopTests:
+    def moduleDeps = Seq(store)
+
 /** Rendering: terminal and Markdown. Pure, does not know JDBC. */
 object report extends PgtopModule:
   def moduleDeps = Seq(core)
@@ -86,13 +97,16 @@ object report extends PgtopModule:
 
 /** Entry point: argument parsing, wiring, exit codes. */
 object cli extends PgtopModule:
-  def moduleDeps = Seq(core, collector, heuristics, explain, report)
+  def moduleDeps = Seq(core, collector, heuristics, explain, report, store)
   def mvnDeps = Seq()
   def mainClass = Some("pgtop.cli.Main")
 
+  object test extends PgtopTests:
+    def moduleDeps = Seq(cli)
+
 /** Integration tests: a throwaway PostgreSQL started through testcontainers. */
 object itest extends PgtopModule:
-  def moduleDeps = Seq(core, collector, heuristics, explain, report)
+  def moduleDeps = Seq(core, collector, heuristics, explain, report, store, cli)
   def mvnDeps = Seq()
 
   object test extends PgtopTests:

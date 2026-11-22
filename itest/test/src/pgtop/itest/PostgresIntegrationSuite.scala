@@ -1,11 +1,17 @@
 package pgtop.itest
 
+import java.io.{ByteArrayOutputStream, PrintStream}
+import java.nio.file.Files
+import java.sql.DriverManager
 import scala.concurrent.duration.*
+import scala.util.Using
 
+import pgtop.cli.Main
 import pgtop.collector.SnapshotCollector
 import pgtop.domain.Snapshot
 import pgtop.heuristics.{Engine, RuleRegistry, Thresholds}
 import pgtop.report.{RenderOptions, Report, ReportInput, Format}
+import pgtop.store.SnapshotFile
 
 class PostgresIntegrationSuite extends munit.FunSuite:
   override def munitTimeout: Duration = 5.minutes
@@ -75,4 +81,54 @@ class PostgresIntegrationSuite extends munit.FunSuite:
     outcome.summaries.foreach { plan =>
       assert(plan.executionMs >= 0.0, plan.executionMs.toString)
       assert(plan.slowestNodeType.nonEmpty, plan.slowestNodeType)
+    }
+
+  test("saves a snapshot to JSON and reads it back unchanged"):
+    val collected = snapshot()
+    val path = Files.createTempFile("pgtop-snapshot", ".json")
+    try
+      SnapshotFile.write(path, collected) match
+        case Left(message) => fail(s"could not write the snapshot: $message")
+        case Right(()) =>
+          assertEquals(SnapshotFile.read(path), Right(collected))
+    finally Files.deleteIfExists(path)
+
+  test("the CLI saves snapshots and diffs them end to end"):
+    val connection = Vector("-u", TestPostgres.container.getJdbcUrl, "--user", TestPostgres.container.getUsername)
+    val env = Map("PGPASSWORD" -> TestPostgres.container.getPassword)
+    val first = Files.createTempFile("pgtop-first", ".json")
+    val second = Files.createTempFile("pgtop-second", ".json")
+    val output = ByteArrayOutputStream()
+    val printed = PrintStream(output)
+    try
+      assertEquals(Main.run("save" +: first.toString +: connection, env, printed, printed), 0)
+      runWorkload()
+      assertEquals(Main.run("save" +: second.toString +: connection, env, printed, printed), 0)
+      output.reset()
+      assertEquals(Main.run(Vector("diff", first.toString, second.toString), Map.empty, printed, printed), 0)
+      val text = output.toString
+      assert(text.contains("database pgtop"), text)
+      assert(text.contains("window"), text)
+      assert(text.contains("seq scans +2"), text)
+      assert(!text.contains("\u001b["), text)
+    finally
+      Files.deleteIfExists(first)
+      Files.deleteIfExists(second)
+
+  /** Two more sequential scans of public.orders for the second snapshot to see. */
+  private def runWorkload(): Unit =
+    Using.resource(
+      DriverManager.getConnection(
+        TestPostgres.container.getJdbcUrl,
+        TestPostgres.container.getUsername,
+        TestPostgres.container.getPassword
+      )
+    ) { connection =>
+      (1 to 2).foreach(_ =>
+        Using.resource(connection.createStatement())(statement =>
+          statement.execute("SELECT count(*) FROM public.orders WHERE status = 'new'")
+        )
+      )
+      // pg_stat_* counters are flushed by the statistics collector, not instantly.
+      Thread.sleep(1_500)
     }
