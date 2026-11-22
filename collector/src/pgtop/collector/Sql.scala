@@ -55,7 +55,7 @@ private[collector] object Sql:
       |  JOIN pg_namespace n ON n.oid = c.relnamespace
       |  JOIN pg_am am ON am.oid = i.relam
       |  LEFT JOIN pg_stat_user_indexes st ON st.indexrelid = i.oid
-      | WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      | WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\_toast%'
       | ORDER BY n.nspname, c.relname, i.relname""".stripMargin
 
   /** `pg_stat_statements` 1.8 renamed `total_time` to `total_exec_time`. */

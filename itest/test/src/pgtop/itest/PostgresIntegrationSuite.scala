@@ -115,7 +115,7 @@ class PostgresIntegrationSuite extends munit.FunSuite:
       Files.deleteIfExists(first)
       Files.deleteIfExists(second)
 
-  /** Two more sequential scans of public.orders for the second snapshot to see. */
+  /** Two more sequential scans of public.events, which no index can serve. */
   private def runWorkload(): Unit =
     Using.resource(
       DriverManager.getConnection(
@@ -126,7 +126,7 @@ class PostgresIntegrationSuite extends munit.FunSuite:
     ) { connection =>
       (1 to 2).foreach(_ =>
         Using.resource(connection.createStatement())(statement =>
-          statement.execute("SELECT count(*) FROM public.orders WHERE status = 'new'")
+          statement.execute("SELECT count(*) FROM public.events WHERE payload LIKE 'x%'")
         )
       )
       // pg_stat_* counters are flushed by the statistics collector, not instantly.
